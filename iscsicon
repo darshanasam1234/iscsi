@@ -1,0 +1,50 @@
+# Define NetApp iSCSI target IPs
+$netappTargets = @("192.168.1.5", "192.168.1.6")
+
+# Get current iSCSI connections
+$iscsiConnections = Get-IscsiConnection
+
+# Store results
+$results = @()
+$serverName = $env:COMPUTERNAME
+
+# Get the iSCSI Initiator IPs for this computer
+$initiatorAddresses = $iscsiConnections | Select-Object -ExpandProperty InitiatorAddress -Unique
+
+foreach ($sourceIP in $initiatorAddresses) {
+    foreach ($targetIP in $netappTargets) {
+        # Check if the expected connection exists
+        $connectionExists = $iscsiConnections | Where-Object { 
+            ($_.InitiatorAddress -eq $sourceIP) -and ($_.TargetAddress -eq $targetIP) 
+        }
+
+        $results += [PSCustomObject]@{
+            Server      = $serverName
+            SourceIP    = $sourceIP
+            TargetIP    = $targetIP
+            Status      = if ($connectionExists) { "Connected" } else { "Not Connected" }
+        }
+    }
+}
+
+# Define report path
+$reportPath = "\\YourServer\SharedFolder\iSCSI_Reports\iSCSI_Report_$serverName.csv"
+
+# Export results to CSV
+$results | Export-Csv -Path $reportPath -NoTypeInformation
+
+# Check for missing connections
+$missingConnections = $results | Where-Object { $_.Status -eq "Not Connected" }
+
+if ($missingConnections) {
+    # Email settings
+    $smtpServer = "smtp.yourcompany.com"
+    $smtpFrom = "alert@yourcompany.com"
+    $smtpTo = "your_email@yourcompany.com"
+    $subject = "🚨 iSCSI Connection Issue Detected on $serverName"
+    $body = "The following iSCSI connections are missing on $serverName:`n`n"
+    $body += ($missingConnections | Format-Table -AutoSize | Out-String)
+
+    # Send email
+    Send-MailMessage -To $smtpTo -From $smtpFrom -Subject $subject -Body $body -SmtpServer $smtpServer
+}
