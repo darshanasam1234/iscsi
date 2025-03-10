@@ -1,0 +1,46 @@
+# Define servers and their expected iSCSI initiator IPs
+$servers = @{
+    "server01" = @("192.168.252.1", "192.168.252.2")
+    "server02" = @("192.168.252.3", "192.168.252.4")
+    "server03" = @("192.168.252.5", "192.168.252.6")
+}
+
+# Define NetApp iSCSI target IPs
+$netappTargets = @("192.168.1.5", "192.168.1.6")
+
+# Get current iSCSI connections
+$iscsiConnections = Get-IscsiConnection
+
+# Store results
+$results = @()
+
+# Check connections for each server
+foreach ($server in $servers.Keys) {
+    foreach ($sourceIP in $servers[$server]) {
+        foreach ($targetIP in $netappTargets) {
+            # Check if the expected connection exists
+            $connectionExists = $iscsiConnections | Where-Object { 
+                ($_.InitiatorAddress -eq $sourceIP) -and ($_.TargetAddress -eq $targetIP) 
+            }
+
+            $results += [PSCustomObject]@{
+                Server      = $server
+                SourceIP    = $sourceIP
+                TargetIP    = $targetIP
+                Status      = if ($connectionExists) { "Connected" } else { "Not Connected" }
+            }
+        }
+    }
+}
+
+# Display results
+$results | Format-Table -AutoSize
+
+# Generate report for missing connections
+$missingConnections = $results | Where-Object { $_.Status -eq "Not Connected" }
+if ($missingConnections) {
+    Write-Host "Some iSCSI connections are missing!" -ForegroundColor Red
+    $missingConnections | Format-Table -AutoSize
+} else {
+    Write-Host "All iSCSI connections are properly established!" -ForegroundColor Green
+}
